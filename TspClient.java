@@ -7,23 +7,24 @@ import java.net.Socket;
 public class TspClient {
     public static void main(String[] args) {
         try {
-            // ทำการเชื่อมต่อกับ Server ที่ IP Address และ Port ที่กำหนด
-            Socket socket = new Socket("server-ip-address", 5000);
+            // connect to Server at IP Address and Port that require
+            Socket socket = new Socket("192.168.1.62", 5000);
 
-            // สร้าง Reader และ Writer เพื่ออ่านข้อมูลเข้าและส่งข้อมูลไปยัง Server
+
+            // create Reader and Writer for read data and connect to Server
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 
-            // ส่งข้อมูล input ไปยัง Server
+            // sent data input to server
             String input = "TSP input";
             out.println(input);
             System.out.println("Sent: " + input);
 
-            // รอรับผลลัพธ์จาก Server
+            // wait result from server
             String response = in.readLine();
             System.out.println("Received: " + response);
 
-            // ปิดการเชื่อมต่อ
+            // close the connection
             in.close();
             out.close();
             socket.close();
