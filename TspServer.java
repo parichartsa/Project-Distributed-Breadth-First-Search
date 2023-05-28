@@ -2,63 +2,69 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Random;
 
 public class TspServer {
     public static void main(String[] args) {
         try {
-            ServerSocket serverSocket = new ServerSocket(5000);
-            System.out.println("Server started. Waiting for clients...");
+            ServerSocket serverSocket = new ServerSocket(5500, 0, InetAddress.getByName("192.168.1.180"));
+            System.out.println("Server is running. Waiting for connections...");
 
-            Socket clientSocket = serverSocket.accept();
-            System.out.println("Client connected.");
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Client connected: " + clientSocket.getInetAddress().getHostAddress());
 
-            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+                Thread clientThread = new Thread(() -> {
+                    try {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                        PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
-            String inputLine;
-            while ((inputLine = in.readLine()) != null) {
-                System.out.println("Received: " + inputLine);
+                        String input = in.readLine();
+                        System.out.println("Received: " + input);
 
-                String result = solveTSP(inputLine);
-                out.println(result);
+                        String response = solveTSP(input);
+                        out.println(response);
+                        System.out.println("Sent: " + response);
+
+                        in.close();
+                        out.close();
+                        clientSocket.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                });
+
+                clientThread.start();
             }
-
-            in.close();
-            out.close();
-            clientSocket.close();
-            serverSocket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private static String solveTSP(String input) {
-        String[] cities = input.split(","); // Split city names into an array
+        String[] cities = input.split(",");
+        int numCities = cities.length;
 
-        int numCities = cities.length; // Number of cities
-        int[] permutation = new int[numCities]; // Store the permutation of city visits
-        int[] bestPermutation = new int[numCities]; // Store the best permutation with the shortest distance
-        double shortestDistance = Double.POSITIVE_INFINITY; // Store the shortest distance
+        int[] permutation = new int[numCities];
+        int[] bestPermutation = new int[numCities];
+        double shortestDistance = Double.POSITIVE_INFINITY;
 
-        // Create an initial permutation [0, 1, 2, ..., numCities-1]
         for (int i = 0; i < numCities; i++) {
             permutation[i] = i;
         }
 
-        // Check all possible routes
         do {
-            double distance = calculateDistance(permutation, cities); // Calculate the distance for the current permutation
+            double distance = calculateDistance(permutation, cities);
 
-            // Store the shortest distance and permutation
             if (distance < shortestDistance) {
                 shortestDistance = distance;
                 System.arraycopy(permutation, 0, bestPermutation, 0, numCities);
             }
-        } while (nextPermutation(permutation)); // Generate the next permutation
+        } while (nextPermutation(permutation));
 
-        // Create the path for the best permutation
         StringBuilder pathBuilder = new StringBuilder();
         for (int i = 0; i < numCities; i++) {
             int cityIndex = bestPermutation[i];
@@ -83,26 +89,59 @@ public class TspServer {
             String city1 = cities[cityIndex1];
             String city2 = cities[cityIndex2];
 
-            distance += calculateDistanceBetweenCities(city1, city2);
+            double lat1 = getLatitude(city1);
+            double lon1 = getLongitude(city1);
+            double lat2 = getLatitude(city2);
+            double lon2 = getLongitude(city2);
+
+            double cityDistance = calculateDistanceBetweenCities(lat1, lon1, lat2, lon2);
+            distance += cityDistance;
         }
+
+        int lastCityIndex = permutation[numCities - 1];
+        int firstCityIndex = permutation[0];
+        String lastCity = cities[lastCityIndex];
+        String firstCity = cities[firstCityIndex];
+
+        double lastCityLat = getLatitude(lastCity);
+        double lastCityLon = getLongitude(lastCity);
+        double firstCityLat = getLatitude(firstCity);
+        double firstCityLon = getLongitude(firstCity);
+
+        double lastToFirstDistance = calculateDistanceBetweenCities(lastCityLat, lastCityLon, firstCityLat, firstCityLon);
+        distance += lastToFirstDistance;
 
         return distance;
     }
 
-    private static double calculateDistanceBetweenCities(String city1, String city2) {
-        // Distance matrix between cities
-        double[][] distanceMatrix = {
-            {0, 10, 15, 20},
-            {10, 0, 35, 25},
-            {15, 35, 0, 30},
-            {20, 25, 30, 0}
-        };
+    private static double calculateDistanceBetweenCities(double lat1, double lon1, double lat2, double lon2) {
+        double lat1Rad = Math.toRadians(lat1);
+        double lon1Rad = Math.toRadians(lon1);
+        double lat2Rad = Math.toRadians(lat2);
+        double lon2Rad = Math.toRadians(lon2);
 
-        // Assuming city1 and city2 are valid city indices
-        int index1 = Integer.parseInt(city1);
-        int index2 = Integer.parseInt(city2);
+        double earthRadius = 6371.0;
+        double dlon = lon2Rad - lon1Rad;
+        double dlat = lat2Rad - lat1Rad;
+        double a = Math.pow(Math.sin(dlat / 2), 2) + Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.pow(Math.sin(dlon / 2), 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        double distance = earthRadius * c;
 
-        return distanceMatrix[index1][index2];
+        return distance;
+    }
+
+    private static double getLatitude(String city) {
+        Random random = new Random();
+        double minLat = 13.5;
+        double maxLat = 14.5;
+        return minLat + (maxLat - minLat) * random.nextDouble();
+    }
+
+    private static double getLongitude(String city) {
+        Random random = new Random();
+        double minLon = 100.0;
+        double maxLon = 101.0;
+        return minLon + (maxLon - minLon) * random.nextDouble();
     }
 
     private static boolean nextPermutation(int[] permutation) {
@@ -113,7 +152,7 @@ public class TspServer {
         }
 
         if (i < 0) {
-            return false; // Last permutation reached
+            return false;
         }
 
         int j = permutation.length - 1;
